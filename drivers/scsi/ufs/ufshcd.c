@@ -6829,7 +6829,64 @@ out:
 	return ret;
 }
 
+static int ufs_get_device_desc(struct ufs_hba *hba,
+			       struct ufs_dev_desc *dev_desc)
+{
+	int err;
+	u8 model_index;
+	u8 str_desc_buf[QUERY_DESC_STRING_MAX_SIZE + 1] = {0};
+	u8 desc_buf[QUERY_DESC_DEVICE_MAX_SIZE];
 
+	err = ufshcd_read_device_desc(hba, desc_buf,
+					QUERY_DESC_DEVICE_MAX_SIZE);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed reading Device Desc. err = %d\n",
+			__func__, err);
+		goto out;
+	}
+
+	/*
+	 * getting vendor (manufacturerID) and Bank Index in big endian
+	 * format
+	 */
+	dev_desc->wmanufacturerid = desc_buf[DEVICE_DESC_PARAM_MANF_ID] << 8 |
+				     desc_buf[DEVICE_DESC_PARAM_MANF_ID + 1];
+
+	model_index = desc_buf[DEVICE_DESC_PARAM_PRDCT_NAME];
+
+	err = ufshcd_read_string_desc(hba, model_index, str_desc_buf,
+					QUERY_DESC_STRING_MAX_SIZE, ASCII_STD);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed reading Product Name. err = %d\n",
+			__func__, err);
+		goto out;
+	}
+
+	str_desc_buf[QUERY_DESC_STRING_MAX_SIZE] = '\0';
+	strlcpy(dev_desc->model, (str_desc_buf + QUERY_DESC_HDR_SIZE),
+		min_t(u8, str_desc_buf[QUERY_DESC_LENGTH_OFFSET],
+		      MAX_MODEL_LEN));
+
+	/* Null terminate the model string */
+	dev_desc->model[MAX_MODEL_LEN] = '\0';
+
+out:
+	return err;
+}
+
+static void ufs_fixup_device_setup(struct ufs_hba *hba,
+				   struct ufs_dev_desc *dev_desc)
+{
+	struct ufs_dev_fix *f;
+
+	for (f = ufs_fixups; f->quirk; f++) {
+		if ((f->card.wmanufacturerid == dev_desc->wmanufacturerid ||
+		     f->card.wmanufacturerid == UFS_ANY_VENDOR) &&
+		    (STR_PRFX_EQUAL(f->card.model, dev_desc->model) ||
+		     !strcmp(f->card.model, UFS_ANY_MODEL)))
+			hba->dev_quirks |= f->quirk;
+	}
+}
 
 /**
  * ufshcd_tune_pa_tactivate - Tunes PA_TActivate of local UniPro
@@ -7085,6 +7142,7 @@ static int ufshcd_device_get_rev(const struct device *dev, char *rev)
  */
 static int ufshcd_probe_hba(struct ufs_hba *hba)
 {
+	struct ufs_dev_desc card = {0};
 	int ret;
 
 #ifdef CONFIG_HUAWEI_UFS_DSM
@@ -7122,16 +7180,14 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 	if (ret)
 		goto out;
 
+	ret = ufs_get_device_desc(hba, &card);
+	if (ret) {
+		dev_err(hba->dev, "%s: Failed getting device info. err = %d\n",
+			__func__, ret);
+		goto out;
+	}
 
-	ufs_advertise_fixup_device(hba);
-
-	/* HI1861 not support autoH8 currently */
-	ufshcd_device_not_support_autoh8(hba);
-
-	ufs_get_geometry_info(hba);
-	if (likely(!hba->host->is_emulator))
-		ufs_get_device_health_info(hba);
-
+	ufs_fixup_device_setup(hba, &card);
 	ufshcd_tune_unipro_params(hba);
 
 	ret = ufshcd_set_vccq_rail_unused(hba,
