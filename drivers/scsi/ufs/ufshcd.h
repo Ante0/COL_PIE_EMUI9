@@ -313,95 +313,13 @@ struct ufs_dev_cmd {
 	struct ufs_query query;
 };
 
-#define UIC_ERR_REG_HIST_LENGTH 8
-/**
- * struct ufs_uic_err_reg_hist - keeps history of uic errors
- * @pos: index to indicate cyclic buffer position
- * @reg: cyclic buffer for registers value
- * @tstamp: cyclic buffer for time stamp
- */
-struct ufs_uic_err_reg_hist {
-	int pos;
-	u32 reg[UIC_ERR_REG_HIST_LENGTH];
-	ktime_t tstamp[UIC_ERR_REG_HIST_LENGTH];
-};
-
-#ifdef CONFIG_DEBUG_FS
-struct debugfs_files {
-	struct dentry *debugfs_root;
-	struct dentry *tag_stats;
-	struct dentry *err_stats;
-	struct dentry *show_hba;
-	struct dentry *host_regs;
-	struct dentry *dump_dev_desc;
-	struct dentry *power_mode;
-	struct dentry *dme_local_read;
-	struct dentry *dme_peer_read;
-	struct dentry *req_stats;
-#ifdef CONFIG_HISI_DEBUG_FS
-	struct dentry *idle_intr_verify;
-	struct dentry *idle_timeout_val;
-	struct dentry *idle_intr_check_timer_threshold;
-#endif
-	u32 dme_local_attr_id;
-	u32 dme_peer_attr_id;
-};
-/* tag stats statistics types */
-enum ts_types {
-	TS_NOT_SUPPORTED	= -1,
-	TS_TAG			= 0,
-	TS_READ			= 1,
-	TS_WRITE		= 2,
-	TS_URGENT_READ		= 3,
-	TS_URGENT_WRITE		= 4,
-	TS_FLUSH		= 5,
-	TS_NUM_STATS		= 6,
-};
-/**
- * struct ufshcd_req_stat - statistics for request handling times (in usec)
- * @min: shortest time measured
- * @max: longest time measured
- * @sum: sum of all the handling times measured (used for average calculation)
- * @count: number of measurements taken
- */
-struct ufshcd_req_stat {
-	u64 min;
-	u64 max;
-	u64 sum;
-	u64 count;
-};
-#endif
-
-/**
- * struct ufs_stats - keeps usage/err statistics
- * @enabled: enable tag stats for debugfs
- * @tag_stats: pointer to tag statistic counters
- * @q_depth: current amount of busy slots
- * @err_stats: counters to keep track of various errors
- * @req_stat: request handling time statistics per request type
- * @hibern8_exit_cnt: Counter to keep track of number of exits,
- *		reset this after link-startup.
- * @last_hibern8_exit_tstamp: Set time after the hibern8 exit.
- *		Clear after the first successful command completion.
- * @pa_err: tracks pa-uic errors
- * @dl_err: tracks dl-uic errors
- * @nl_err: tracks nl-uic errors
- * @tl_err: tracks tl-uic errors
- * @dme_err: tracks dme errors
- */
-struct ufs_stats {
-#ifdef CONFIG_DEBUG_FS
-	bool enabled;
-	u64 **tag_stats;
-	int q_depth;
-	int err_stats[UFS_ERR_MAX];
-	struct ufshcd_req_stat req_stats[TS_NUM_STATS];
-#endif
-	struct ufs_uic_err_reg_hist pa_err;
-	struct ufs_uic_err_reg_hist dl_err;
-	struct ufs_uic_err_reg_hist nl_err;
-	struct ufs_uic_err_reg_hist tl_err;
-	struct ufs_uic_err_reg_hist dme_err;
+struct ufs_desc_size {
+	int dev_desc;
+	int pwr_desc;
+	int geom_desc;
+	int interc_desc;
+	int unit_desc;
+	int conf_desc;
 };
 
 /**
@@ -627,6 +545,7 @@ struct ufs_unique_number {
  * @clk_list_head: UFS host controller clocks list node head
  * @pwr_info: holds current power mode
  * @max_pwr_info: keeps the device max valid pwm
+ * @desc_size: descriptor sizes reported by device
  * @urgent_bkops_lvl: keeps track of urgent bkops level for device
  * @is_urgent_bkops_lvl_checked: keeps track if the urgent bkops level for
  *  device is known or not.
@@ -876,37 +795,14 @@ struct ufs_hba {
 
 	enum bkops_status urgent_bkops_lvl;
 	bool is_urgent_bkops_lvl_checked;
-	int latency_hist_enabled;
-	struct io_latency_state io_lat_read;
-	struct io_latency_state io_lat_write;
-	struct ufs_unique_number unique_number;
 
-	uint16_t manufacturer_id;
-	uint16_t manufacturer_date;
-
-	uint16_t ufs_device_spec_version;
-	/* Bitmask for enabling debug prints */
-	u32 ufshcd_dbg_print;
-
-	struct dentry		*debugfs_root;
-	struct dentry		*hba_addr;
-
-#ifdef CONFIG_SCSI_UFS_HS_ERROR_RECOVER
-	int hs_single_lane;
-	int use_pwm_mode;
-	struct wake_lock	recover_wake_lock;
-	int disable_suspend;
-	int check_pwm_after_h8;
-	int v_rx;
-	int v_tx;
-	int init_retry;
-#endif
 #ifdef CONFIG_SCSI_UFS_KIRIN_LINERESET_CHECK
 	bool bg_task_enable;
 	struct task_struct *background_task;
 	u32 reg_uecpa;
 #endif
-	struct io_latency_state io_lat_s;
+	struct ufs_desc_size desc_size;
+};
 
 #ifdef CONFIG_DEVICE_HEALTH_INFO
 	u8 device_health_info[DESC_HEALTH_INFO_SIZE];
@@ -1123,6 +1019,12 @@ int ufshcd_read_string_desc(struct ufs_hba *hba, int desc_index, u8 *buf,
 /* Expose Query-Request API */
 int ufshcd_query_flag(struct ufs_hba *hba, enum query_opcode opcode,
 	enum flag_idn idn, bool *flag_res);
+int ufshcd_hold(struct ufs_hba *hba, bool async);
+void ufshcd_release(struct ufs_hba *hba);
+
+int ufshcd_map_desc_id_to_length(struct ufs_hba *hba, enum desc_idn desc_id,
+	int *desc_length);
+
 u32 ufshcd_get_local_unipro_ver(struct ufs_hba *hba);
 void ufshcd_scsi_unblock_requests(struct ufs_hba *hba);
 void ufshcd_scsi_block_requests(struct ufs_hba *hba);
