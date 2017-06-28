@@ -33,6 +33,8 @@
 #include <linux/slab.h>
 #include <linux/tboot.h>
 #include <linux/hrtimer.h>
+#include <linux/frame.h>
+#include <linux/nospec.h>
 #include "kvm_cache_regs.h"
 #include "x86.h"
 
@@ -8687,6 +8689,7 @@ static void vmx_handle_external_intr(struct kvm_vcpu *vcpu)
 			);
 	}
 }
+STACK_FRAME_NON_STANDARD(vmx_handle_external_intr);
 
 static bool vmx_has_high_real_mode_segbase(void)
 {
@@ -9071,6 +9074,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 	vmx_recover_nmi_blocking(vmx);
 	vmx_complete_interrupts(vmx);
 }
+STACK_FRAME_NON_STANDARD(vmx_vcpu_run);
 
 static void vmx_load_vmcs01(struct kvm_vcpu *vcpu)
 {
