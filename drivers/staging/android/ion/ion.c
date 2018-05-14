@@ -269,19 +269,11 @@ err2:
 
 void ion_buffer_destroy(struct ion_buffer *buffer)
 {
-	if (buffer->heap->type != ION_HEAP_TYPE_CARVEOUT)
-		atomic_long_sub(buffer->size, &ion_total_size);
-
-	if (buffer->iommu_map) {
-		pr_info("%s: iommu map not released, do unmap now!\n",
-				__func__);
-		buffer->heap->ops->unmap_iommu(buffer->iommu_map);
-		kfree(buffer->iommu_map);
-		buffer->iommu_map = NULL;
-	}
-
-	if (WARN_ON(buffer->kmap_cnt > 0))
+	if (buffer->kmap_cnt > 0) {
+		pr_warn_once("%s: buffer still mapped in the kernel\n",
+			     __func__);
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
+	}
 	buffer->heap->ops->free(buffer);
 	vfree(buffer->pages);
 	kfree(buffer);
