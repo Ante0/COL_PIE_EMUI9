@@ -246,7 +246,8 @@ static int gab_probe(struct platform_device *pdev)
 	enum power_supply_property *properties;
 	int ret = 0;
 	int chan;
-	int index = 0;
+	int index = ARRAY_SIZE(gab_props);
+	bool any = false;
 
 	adc_bat = devm_kzalloc(&pdev->dev, sizeof(*adc_bat), GFP_KERNEL);
 	if (!adc_bat) {
@@ -295,15 +296,22 @@ static int gab_probe(struct platform_device *pdev)
 			adc_bat->channel[chan] = NULL;
 		} else {
 			/* copying properties for supported channels only */
-			memcpy(properties + sizeof(*(psy_desc->properties)) * index,
-					&gab_dyn_props[chan],
-					sizeof(gab_dyn_props[chan]));
-			index++;
+			int index2;
+
+			for (index2 = 0; index2 < index; index2++) {
+				if (psy_desc->properties[index2] ==
+				    gab_dyn_props[chan])
+					break;	/* already known */
+			}
+			if (index2 == index)	/* really new */
+				psy_desc->properties[index++] =
+					gab_dyn_props[chan];
+			any = true;
 		}
 	}
 
 	/* none of the channels are supported so let's bail out */
-	if (index == 0) {
+	if (!any) {
 		ret = -ENODEV;
 		goto second_mem_fail;
 	}
