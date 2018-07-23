@@ -71,7 +71,7 @@ static inline u8 *blkcipher_get_spot(u8 *start, unsigned int len)
 }
 
 static inline void blkcipher_done_slow(struct blkcipher_walk *walk,
-					unsigned int bsize)
+				       unsigned int bsize)
 {
 	u8 *addr;
 
@@ -81,7 +81,7 @@ static inline void blkcipher_done_slow(struct blkcipher_walk *walk,
 }
 
 static inline void blkcipher_done_fast(struct blkcipher_walk *walk,
-					unsigned int n)
+				       unsigned int n)
 {
 	if (walk->flags & BLKCIPHER_WALK_COPY) {
 		blkcipher_map_dst(walk);
@@ -103,8 +103,9 @@ int blkcipher_walk_done(struct blkcipher_desc *desc,
 	unsigned int n; /* bytes processed */
 	bool more;
 
-	if (likely(err < 0))
+	if (unlikely(err < 0))
 		goto finish;
+
 	n = walk->nbytes - err;
 	walk->total -= n;
 	more = (walk->total != 0);
@@ -128,7 +129,6 @@ int blkcipher_walk_done(struct blkcipher_desc *desc,
 		return blkcipher_walk_next(desc, walk);
 	}
 	err = 0;
-
 finish:
 	walk->nbytes = 0;
 	if (walk->iv != desc->info)
@@ -137,7 +137,6 @@ finish:
 		kfree(walk->buffer);
 	if (walk->page)
 		free_page((unsigned long)walk->page);
-
 	return err;
 }
 EXPORT_SYMBOL_GPL(blkcipher_walk_done);
