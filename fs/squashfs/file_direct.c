@@ -108,40 +108,28 @@ int squashfs_readpages_block(struct page *target_page,
 			     int page_index, u64 block, int bsize)
 
 {
-	struct squashfs_page_actor *actor;
-	struct inode *inode = mapping->host;
-	struct squashfs_sb_info *msblk = inode->i_sb->s_fs_info;
-	int start_index, end_index, file_end, actor_pages, res;
-	int mask = (1 << (msblk->block_log - PAGE_SHIFT)) - 1;
+	struct inode *i = target_page->mapping->host;
+	struct squashfs_cache_entry *buffer = squashfs_get_datablock(i->i_sb,
+						 block, bsize);
+	int bytes = buffer->length, res = buffer->error, n, offset = 0;
 
-	/*
-	 * If readpage() is called on an uncompressed datablock, we can just
-	 * read the pages instead of fetching the whole block.
-	 * This greatly improves the performance when a process keep doing
-	 * random reads because we only fetch the necessary data.
-	 * The readahead algorithm will take care of doing speculative reads
-	 * if necessary.
-	 * We can't read more than 1 block even if readahead provides use more
-	 * pages because we don't know yet if the next block is compressed or
-	 * not.
-	 */
-	if (bsize && !SQUASHFS_COMPRESSED_BLOCK(bsize)) {
-		u64 block_end = block + msblk->block_size;
+	if (res) {
+		ERROR("Unable to read page, block %llx, size %x\n", block,
+			bsize);
+		goto out;
+	}
 
-		block += (page_index & mask) * PAGE_SIZE;
-		actor_pages = (block_end - block) / PAGE_SIZE;
-		if (*nr_pages < actor_pages)
-			actor_pages = *nr_pages;
-		start_index = page_index;
-		bsize = min_t(int, bsize, (PAGE_SIZE * actor_pages)
-					  | SQUASHFS_COMPRESSED_BIT_BLOCK);
-	} else {
-		file_end = (i_size_read(inode) - 1) >> PAGE_SHIFT;
-		start_index = page_index & ~mask;
-		end_index = start_index | mask;
-		if (end_index > file_end)
-			end_index = file_end;
-		actor_pages = end_index - start_index + 1;
+	for (n = 0; n < pages && bytes > 0; n++,
+			bytes -= PAGE_SIZE, offset += PAGE_SIZE) {
+		int avail = min_t(int, bytes, PAGE_SIZE);
+
+		if (page[n] == NULL)
+			continue;
+
+		squashfs_fill_page(page[n], buffer, offset, avail);
+		unlock_page(page[n]);
+		if (page[n] != target_page)
+			put_page(page[n]);
 	}
 
 	actor = actor_from_page_cache(actor_pages, target_page,
