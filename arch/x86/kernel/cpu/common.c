@@ -825,6 +825,7 @@ static void identify_cpu_without_cpuid(struct cpuinfo_x86 *c)
 			}
 		}
 #endif
+	c->x86_cache_bits = c->x86_phys_bits;
 }
 
 /*
