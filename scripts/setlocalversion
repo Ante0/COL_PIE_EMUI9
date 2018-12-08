@@ -34,6 +34,9 @@ scm_version()
 	short=false
 
 	cd "$srctree"
+
+	return; # Do nothing.
+
 	if test -e .scmversion; then
 		cat .scmversion
 		return
