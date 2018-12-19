@@ -241,7 +241,7 @@ static void tcp_incr_quickack(struct sock *sk)
 		icsk->icsk_ack.quick = min(quickacks, TCP_MAX_QUICKACKS);
 }
 
-void tcp_enter_quickack_mode(struct sock *sk, unsigned int max_quickacks)
+void tcp_enter_quickack_mode(struct sock *sk)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	tcp_incr_quickack(sk);
@@ -291,7 +291,7 @@ static void __tcp_ecn_check_ce(struct sock *sk, const struct sk_buff *skb)
 		 * it is probably a retransmit.
 		 */
 		if (tp->ecn_flags & TCP_ECN_SEEN)
-			tcp_enter_quickack_mode(sk, 1);
+			tcp_enter_quickack_mode(sk);
 		break;
 	case INET_ECN_CE:
 		if (tcp_ca_needs_ecn(sk))
@@ -299,7 +299,7 @@ static void __tcp_ecn_check_ce(struct sock *sk, const struct sk_buff *skb)
 
 		if (!(tp->ecn_flags & TCP_ECN_DEMAND_CWR)) {
 			/* Better not delay acks, sender can have a very low cwnd */
-			tcp_enter_quickack_mode(sk, 1);
+			tcp_enter_quickack_mode(sk);
 			tp->ecn_flags |= TCP_ECN_DEMAND_CWR;
 		}
 		tp->ecn_flags |= TCP_ECN_SEEN;
@@ -4352,7 +4352,7 @@ static void tcp_send_dupack(struct sock *sk, const struct sk_buff *skb)
 	if (TCP_SKB_CB(skb)->end_seq != TCP_SKB_CB(skb)->seq &&
 	    before(TCP_SKB_CB(skb)->seq, tp->rcv_nxt)) {
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_DELAYEDACKLOST);
-		tcp_enter_quickack_mode(sk, TCP_MAX_QUICKACKS);
+		tcp_enter_quickack_mode(sk);
 
 		if (tcp_is_sack(tp) && sysctl_tcp_dsack) {
 			u32 end_seq = TCP_SKB_CB(skb)->end_seq;
@@ -4910,7 +4910,7 @@ queue_and_out:
 		tcp_dsack_set(sk, TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->end_seq);
 
 out_of_window:
-		tcp_enter_quickack_mode(sk, TCP_MAX_QUICKACKS);
+		tcp_enter_quickack_mode(sk);
 		inet_csk_schedule_ack(sk);
 drop:
 		tcp_drop(sk, skb);
@@ -6104,7 +6104,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			 * to stand against the temptation 8)     --ANK
 			 */
 			inet_csk_schedule_ack(sk);
-			tcp_enter_quickack_mode(sk, TCP_MAX_QUICKACKS);
+			tcp_enter_quickack_mode(sk);
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
 						  TCP_DELACK_MAX, TCP_RTO_MAX);
 
